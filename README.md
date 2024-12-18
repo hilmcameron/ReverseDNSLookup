@@ -12,9 +12,7 @@ This tool performs reverse IP lookups and retrieves other websites hosted on the
 
 ## Requirements
 
-- Python 3.7+
 - `aiohttp`
-- `requests`
 
 ## Installation
 
@@ -29,7 +27,7 @@ This tool performs reverse IP lookups and retrieves other websites hosted on the
     pip install -r requirements.txt
     ```
 
-3. Replace `Your-Api-Key-Here` in the code with your ViewDNS API key.
+3. Replace `Api-Key` in the code with your ViewDNS API key.
 
 ## Usage
 
