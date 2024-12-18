@@ -7,8 +7,6 @@ This tool performs reverse IP lookups and retrieves other websites hosted on the
 - Validate IP addresses
 - Perform reverse IP lookups
 - Retrieve other websites hosted on the same server
-- Asynchronous operations for better performance
-- Logging for better traceability
 
 ## Requirements
 
