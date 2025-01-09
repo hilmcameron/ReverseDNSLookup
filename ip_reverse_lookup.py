@@ -8,9 +8,8 @@ import logging
 import asyncio
 import argparse
 import ipaddress
-
-from typing import List, Optional, Protocol
 from functools import lru_cache
+from typing import List, Optional, Protocol, Any, Type, Dict
 
 import aiohttp
 
@@ -23,9 +22,11 @@ class IPValidator(Protocol):
     def is_valid_ip(self, ip: str) -> bool:
         ...
 
+
 class ReverseLookup(Protocol):
     async def reverse_lookup(self, ip: str) -> Optional[str]:
         ...
+
 
 class WebsitesOnServer(Protocol):
     async def get_websites_on_server(self, ip: str) -> List[str]:
@@ -33,8 +34,8 @@ class WebsitesOnServer(Protocol):
 
 
 class IPUtils(IPValidator, ReverseLookup, WebsitesOnServer):
-    def __init__(self) -> None:
-        self.session: Optional[aiohttp.ClientSession] = None
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None) -> None:
+        self.session = session
 
     async def setup(self) -> None:
         self.session = aiohttp.ClientSession()
@@ -43,16 +44,14 @@ class IPUtils(IPValidator, ReverseLookup, WebsitesOnServer):
         if self.session:
             await self.session.close()
 
-    def __aenter__(self) -> IPUtils:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.setup())
+    async def __aenter__(self) -> IPUtils:
+        await self.setup()
         return self
 
-    def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.close())
+    async def __aexit__(self, exc_type: Type[BaseException], exc_val: BaseException, exc_tb: Any) -> None:
+        await self.close()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<IPUtils(session={self.session})>"
 
     @staticmethod
@@ -84,33 +83,40 @@ class IPUtils(IPValidator, ReverseLookup, WebsitesOnServer):
                     return data["response"]["domains"]
         return []
 
+    @staticmethod
+    def validate_ips(ips: List[str]) -> Dict[str, bool]:
+        return {ip: IPUtils.is_valid_ip(ip) for ip in ips}
 
-async def main():
+
+async def process_ip(ip_utils: IPUtils, ip: str, print_all: bool) -> None:
+    if not IPUtils.is_valid_ip(ip):
+        logging.error(f"Invalid IP address: {ip}")
+        return
+
+    domain = await IPUtils.reverse_lookup(ip)
+    if domain:
+        logging.info(f"IP: {ip}, Domain: {domain}")
+    else:
+        logging.warning(f"No domain found for IP: {ip}")
+        return
+
+    if print_all:
+        websites = await ip_utils.get_websites_on_server(ip)
+        if websites:
+            logging.info("Other websites on the same server:")
+            logging.info("\n".join(websites))
+        else:
+            logging.warning("No other websites found on the same server.")
+
+
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Perform IP reverse lookup.")
     parser.add_argument("ips", nargs="+", help="IP address(es) to perform reverse lookup on.")
     parser.add_argument("--all", "-a", action="store_true", help="Print all other websites on the same server.")
     args = parser.parse_args()
 
     async with IPUtils() as ip_utils:
-        for ip in args.ips:
-            if not ip_utils.is_valid_ip(ip):
-                logging.error(f"Invalid IP address: {ip}")
-                continue
-
-            domain = await ip_utils.reverse_lookup(ip)
-            if not domain:
-                logging.warning(f"No domain found for IP: {ip}")
-                continue
-
-            logging.info(f"IP: {ip}, Domain: {domain}")
-
-            if args.all:
-                websites = await ip_utils.get_websites_on_server(ip)
-                if websites:
-                    logging.info("Other websites on the same server:")
-                    logging.info("\n".join(websites))
-                else:
-                    logging.warning("No other websites found on the same server.")
+        await asyncio.gather(*(process_ip(ip_utils, ip, args.all) for ip in args.ips))
 
 
 if __name__ == "__main__":
